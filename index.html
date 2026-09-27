@@ -878,7 +878,7 @@
     <footer>
         <div>جميع الحقوق محفوظة &copy; 2026 - منصة الخطة الأسبوعية</div>
         <div style="margin-top: 5px;">
-            اعداد وبرمجه <span class="dev-info">أ.صلاح الرحيمان 0530166681</span>
+            إعداد وبرمجة <span class="dev-info">أ.صلاح الرحيمان 0530166681</span>[cite: 1]
         </div>
     </footer>
 
@@ -886,8 +886,6 @@
     <script>
         // =====================================================================
         // رابط تطبيق ويب Google Apps Script (Web App URL)
-        // بعد نشر الكود الموجود في ملف Code.gs كـ "Web App"، الصق الرابط هنا
-        // مثال: https://script.google.com/macros/s/AKfycbx.../exec
         // =====================================================================
         const API_URL = 'https://script.google.com/macros/s/AKfycbxOoctGA7NB3WVoTP_2dl_HP-VthxpjD36XHWV7r9kpMfs3xVUDHLqBfgPabdEJVa9t/exec';
 
@@ -936,8 +934,6 @@
             }
         });
 
-        // يجلب كامل قاعدة البيانات (Google Sheet) ويحدّث الواجهة — يُستدعى بعد كل عملية
-        // حفظ حتى تبقى كل الجلسات (لكل مستخدم) متزامنة مع بعضها بدون تعارض
         async function loadDataFromServer() {
             try {
                 const res = await fetch(API_URL, { method: 'GET' });
@@ -963,13 +959,10 @@
             }
         }
 
-        // يرسل عملية إضافة/تعديل/حذف إلى Google Apps Script (والذي يقفل الجدول أثناء
-        // الكتابة عبر LockService حتى لا يتعارض مستخدمان يكتبان في نفس اللحظة)
         async function postAction(action, payload) {
             try {
                 const res = await fetch(API_URL + '?action=' + encodeURIComponent(action), {
                     method: 'POST',
-                    // نستخدم text/plain لتفادي طلب preflight (OPTIONS) الذي لا يدعمه Apps Script افتراضياً
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify(payload || {})
                 });
