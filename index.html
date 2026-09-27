@@ -884,35 +884,26 @@
 
     <!-- Secure JavaScript Application Logic -->
     <script>
-
-        /* =====================================================================
-           إعدادات الاتصال بالخادم (Google Apps Script Web App)
-           ---------------------------------------------------------------------
-           1) بعد نشر ملف Code.gs كتطبيق ويب (Deploy > New deployment > Web app)
-              انسخ الرابط (URL) وضعه في API_URL بالأسفل.
-           2) ضع نفس القيمة الموجودة في متغير API_SECRET داخل Code.gs هنا.
-              (هذا المفتاح مجرد حماية بسيطة تمنع الطلبات العشوائية، وليس بديلاً
-              عن كلمة مرور صاحب الصلاحية أو المعلم؛ لأن أي كود في المتصفح يمكن
-              لأي شخص متمرّس رؤيته من "عرض المصدر" - فلا تضع فيه أي شيء حسّاس
-              فعلياً واعتبره مجرد تصفية أولية للطلبات).
-        ===================================================================== */
-        const API_URL    = 'PASTE_YOUR_WEB_APP_URL_HERE';
-        const API_SECRET = 'PASTE_THE_SAME_SECRET_AS_IN_CODE_GS';
+        // =====================================================================
+        // رابط تطبيق ويب Google Apps Script (Web App URL)
+        // بعد نشر الكود الموجود في ملف Code.gs كـ "Web App"، الصق الرابط هنا
+        // مثال: https://script.google.com/macros/s/AKfycbx.../exec
+        // =====================================================================
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxOoctGA7NB3WVoTP_2dl_HP-VthxpjD36XHWV7r9kpMfs3xVUDHLqBfgPabdEJVa9t/exec';
 
         let appData = {
             adminPass: '1234',
             visitsCount: 0,
             schoolInfo: { name: '', code: '' },
-            weeks: [],
-            grades: [],
-            classrooms: [],
-            subjects: [],
+            weeks: ['الأسبوع الأول', 'الأسبوع الثاني'],
+            grades: ['الأول المتوسط', 'الثاني المتوسط'],
+            classrooms: ['1/1', '1/2'],
+            subjects: ['الرياضيات', 'العلوم', 'اللغة العربية', 'الإنجليزي'],
             teachers: [],
             plans: []
         };
 
         let currentLoggedInTeacher = null;
-        let isConfigured = API_URL.indexOf('PASTE_YOUR') === -1;
 
         // دالة حماية من ثغرات XSS (Cross-Site Scripting) لتعقيم كافة النصوص قبل العرض
         function escapeHTML(str) {
@@ -929,77 +920,71 @@
             });
         }
 
-        /* ---------------------------------------------------------------
-           الاتصال الموحّد بالخادم (Google Apps Script)
-           - يُستخدم POST مع Content-Type: text/plain لتفادي طلبات
-             CORS Preflight التي لا يدعمها Apps Script بشكل جيد.
-           - كل طلب يُرفق معه "secret" ليتم التحقق منه في الخادم.
-        --------------------------------------------------------------- */
-        async function callAPI(action, payload) {
-            if (!isConfigured) {
-                alert('لم يتم ضبط رابط الخادم (API_URL) بعد. يرجى مراجعة تعليمات الإعداد.');
-                return { result: 'error', message: 'not_configured' };
-            }
-            payload = payload || {};
-            payload.action = action;
-            payload.secret = API_SECRET;
-
-            try {
-                const res = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-                if (data.result !== 'success') {
-                    alert(data.message || 'حدث خطأ غير متوقع أثناء الاتصال بالخادم.');
-                }
-                return data;
-            } catch (err) {
-                alert('تعذّر الاتصال بالخادم، يرجى التحقق من اتصال الإنترنت والمحاولة مجدداً.');
-                return { result: 'error', message: String(err) };
-            }
-        }
-
-        function setBusy(isBusy) {
-            document.body.style.cursor = isBusy ? 'progress' : 'default';
-        }
-
-        /* ---------------------------------------------------------------
-           جلب كامل بيانات النظام من الشيتات (يُستخدم عند التحميل وقبل أي
-           عملية حساسة لضمان أن كل المستخدمين يعملون على أحدث نسخة من
-           البيانات، ولتفادي التعارض بين أكثر من مستخدم متصل بنفس الوقت).
-        --------------------------------------------------------------- */
-        async function refreshDataFromServer() {
-            setBusy(true);
-            const data = await callAPI('getData');
-            setBusy(false);
-            if (data.result === 'success') {
-                appData.schoolInfo   = data.schoolInfo;
-                appData.adminPass    = data.adminPass;
-                appData.visitsCount  = data.visitsCount;
-                appData.weeks        = data.weeks;
-                appData.grades       = data.grades;
-                appData.classrooms   = data.classrooms;
-                appData.subjects     = data.subjects;
-                appData.teachers     = data.teachers;
-                appData.plans        = data.plans;
-                updateUIState();
-                const counterEl = document.getElementById('visitCounter');
-                if (counterEl) counterEl.textContent = appData.visitsCount;
-            }
-            return data;
-        }
+        let dataLoaded = false;
 
         window.addEventListener('DOMContentLoaded', async () => {
-            await refreshDataFromServer();
-            const inc = await callAPI('incrementVisits');
-            if (inc.result === 'success') {
-                appData.visitsCount = inc.visitsCount;
-                const counterEl = document.getElementById('visitCounter');
-                if (counterEl) counterEl.textContent = appData.visitsCount;
+            if (API_URL.includes('PASTE_YOUR_GOOGLE_APPS_SCRIPT')) {
+                alert('لم يتم ربط الصفحة بقاعدة بيانات Google Sheet بعد. يرجى وضع رابط الـ Web App داخل المتغير API_URL في الكود.');
+                updateUIState();
+                return;
+            }
+            await loadDataFromServer();
+            const result = await postAction('incrementVisit', {});
+            if (result && typeof result.visitsCount !== 'undefined') {
+                appData.visitsCount = result.visitsCount;
+                document.getElementById('visitCounter').textContent = appData.visitsCount;
             }
         });
+
+        // يجلب كامل قاعدة البيانات (Google Sheet) ويحدّث الواجهة — يُستدعى بعد كل عملية
+        // حفظ حتى تبقى كل الجلسات (لكل مستخدم) متزامنة مع بعضها بدون تعارض
+        async function loadDataFromServer() {
+            try {
+                const res = await fetch(API_URL, { method: 'GET' });
+                const json = await res.json();
+                if (json && json.error) {
+                    alert('خطأ من الخادم: ' + json.error);
+                    return;
+                }
+                appData = json;
+                if (!appData.schoolInfo) appData.schoolInfo = { name: '', code: '' };
+                if (!Array.isArray(appData.weeks)) appData.weeks = [];
+                if (!Array.isArray(appData.grades)) appData.grades = [];
+                if (!Array.isArray(appData.classrooms)) appData.classrooms = [];
+                if (!Array.isArray(appData.subjects)) appData.subjects = [];
+                if (!Array.isArray(appData.teachers)) appData.teachers = [];
+                if (!Array.isArray(appData.plans)) appData.plans = [];
+                dataLoaded = true;
+                updateUIState();
+                document.getElementById('visitCounter').textContent = appData.visitsCount || 0;
+            } catch (err) {
+                console.error(err);
+                alert('تعذر الاتصال بقاعدة بيانات Google Sheet. تحقق من رابط الـ API ومن اتصال الإنترنت.');
+            }
+        }
+
+        // يرسل عملية إضافة/تعديل/حذف إلى Google Apps Script (والذي يقفل الجدول أثناء
+        // الكتابة عبر LockService حتى لا يتعارض مستخدمان يكتبان في نفس اللحظة)
+        async function postAction(action, payload) {
+            try {
+                const res = await fetch(API_URL + '?action=' + encodeURIComponent(action), {
+                    method: 'POST',
+                    // نستخدم text/plain لتفادي طلب preflight (OPTIONS) الذي لا يدعمه Apps Script افتراضياً
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload || {})
+                });
+                const json = await res.json();
+                if (json && json.error) {
+                    alert('حدث خطأ: ' + json.error);
+                    return null;
+                }
+                return json || { ok: true };
+            } catch (err) {
+                console.error(err);
+                alert('تعذر الاتصال بقاعدة بيانات Google Sheet. تحقق من رابط الـ API ومن اتصال الإنترنت.');
+                return null;
+            }
+        }
 
         function updateUIState() {
             if (appData.schoolInfo.name) {
@@ -1022,16 +1007,16 @@
             }
         }
 
-        async function promptAdminLogin() {
-            await refreshDataFromServer();
+        function promptAdminLogin() {
             document.getElementById('adminPassInput').value = '';
             document.getElementById('adminAuthModal').classList.add('active');
         }
 
-        function verifyAdminPass(e) {
+        async function verifyAdminPass(e) {
             e.preventDefault();
+            await loadDataFromServer();
             const inputPass = document.getElementById('adminPassInput').value.trim();
-            if (inputPass && inputPass === appData.adminPass) {
+            if (inputPass && String(inputPass) === String(appData.adminPass)) {
                 closeModal('adminAuthModal');
                 showSection('adminViewSection');
             } else {
@@ -1047,12 +1032,9 @@
         async function saveNewAdminPassword(e) {
             e.preventDefault();
             const newPass = document.getElementById('newAdminPassInput').value.trim();
-            if (!newPass) {
-                alert('يرجى كتابة رقم سري صحيح.');
-                return;
-            }
-            const result = await callAPI('changeAdminPassword', { newPass });
-            if (result.result === 'success') {
+            if (!newPass) return alert('يرجى كتابة رقم سري صحيح.');
+            const result = await postAction('changeAdminPass', { newPass });
+            if (result) {
                 appData.adminPass = newPass;
                 closeModal('changeAdminPassModal');
                 alert('تم تحديث الرقم السري للمسؤول بنجاح!');
@@ -1066,13 +1048,11 @@
 
         async function saveSchoolInfo(e) {
             e.preventDefault();
-            const schoolName = document.getElementById('schoolNameInput').value.trim();
-            const schoolCode = document.getElementById('schoolCodeInput').value.trim();
-            const result = await callAPI('saveSchoolInfo', { schoolName, schoolCode });
-            if (result.result === 'success') {
-                appData.schoolInfo.name = schoolName;
-                appData.schoolInfo.code = schoolCode;
-                updateUIState();
+            const name = document.getElementById('schoolNameInput').value.trim();
+            const code = document.getElementById('schoolCodeInput').value.trim();
+            const result = await postAction('saveSchoolInfo', { name, code });
+            if (result) {
+                await loadDataFromServer();
                 alert('تم حفظ بيانات المدرسة بنجاح!');
             }
         }
@@ -1081,16 +1061,13 @@
             const value = document.getElementById(inputId).value.trim();
             if (!value) return alert('يرجى كتابة نص للإضافة');
 
-            if (appData[type].includes(value)) {
-                alert('هذا العنصر مضاف مسبقاً!');
-                return;
+            if (appData[type] && appData[type].includes(value)) {
+                return alert('هذا العنصر مضاف مسبقاً!');
             }
-
-            const result = await callAPI('addQuickItem', { type, value });
-            if (result.result === 'success') {
-                appData[type] = result.list;
+            const result = await postAction('addQuickItem', { type, value });
+            if (result) {
                 document.getElementById(inputId).value = '';
-                populateTeacherSelects();
+                await loadDataFromServer();
                 alert('تمت الإضافة بنجاح!');
             }
         }
@@ -1100,11 +1077,10 @@
             const name = document.getElementById('teacherName').value.trim();
             const password = document.getElementById('teacherPassword').value.trim();
 
-            const result = await callAPI('registerTeacher', { name, password });
-            if (result.result === 'success') {
-                await refreshDataFromServer();
-                renderTeachersTable();
+            const result = await postAction('registerTeacher', { name, password });
+            if (result) {
                 document.getElementById('addTeacherForm').reset();
+                await loadDataFromServer();
                 alert('تم تسجيل بيانات المعلم بنجاح!');
             }
         }
@@ -1119,10 +1095,10 @@
                 tdIndex.textContent = index + 1;
 
                 const tdName = document.createElement('td');
-                tdName.textContent = t.name;
+                tdName.textContent = t.name; 
 
                 const tdPass = document.createElement('td');
-                tdPass.textContent = '••••••••';
+                tdPass.textContent = '••••••••'; 
 
                 const tdActions = document.createElement('td');
                 tdActions.style.cssText = "display: flex; justify-content: center; gap: 12px; align-items: center;";
@@ -1165,33 +1141,31 @@
             const name = document.getElementById('editTeacherName').value.trim();
             const password = document.getElementById('editTeacherPassword').value.trim();
 
-            const result = await callAPI('updateTeacher', { id, name, password });
-            if (result.result === 'success') {
-                await refreshDataFromServer();
-                renderTeachersTable();
+            const result = await postAction('editTeacher', { id, name, password });
+            if (result) {
                 closeModal('editTeacherModal');
+                await loadDataFromServer();
                 alert('تم تحديث بيانات المعلم بنجاح!');
             }
         }
 
         async function deleteTeacher(id) {
             if (!confirm('هل أنت تأكد من حذف المعلم؟')) return;
-            const result = await callAPI('deleteTeacher', { id });
-            if (result.result === 'success') {
-                await refreshDataFromServer();
-                renderTeachersTable();
+            const result = await postAction('deleteTeacher', { id });
+            if (result) {
+                await loadDataFromServer();
             }
         }
 
-        async function openTeacherLoginModal() {
-            await refreshDataFromServer();
+        function openTeacherLoginModal() {
             document.getElementById('teacherSchoolCode').value = '';
             document.getElementById('teacherLoginPass').value = '';
             document.getElementById('teacherAuthModal').classList.add('active');
         }
 
-        function verifyTeacherLogin(e) {
+        async function verifyTeacherLogin(e) {
             e.preventDefault();
+            await loadDataFromServer();
             const schoolCode = document.getElementById('teacherSchoolCode').value.trim();
             const pass = document.getElementById('teacherLoginPass').value.trim();
 
@@ -1200,12 +1174,12 @@
                 return;
             }
 
-            if (schoolCode !== appData.schoolInfo.code) {
+            if (String(schoolCode) !== String(appData.schoolInfo.code)) {
                 alert('رقم المدرسة (الرقم الوزاري) غير صحيح!');
                 return;
             }
 
-            const teacher = appData.teachers.find(t => t.password === pass);
+            const teacher = appData.teachers.find(t => String(t.password) === String(pass));
             if (teacher) {
                 currentLoggedInTeacher = teacher;
                 document.getElementById('activeTeacherName').textContent = `المعلم: ${teacher.name}`;
@@ -1220,13 +1194,13 @@
         function populateTeacherSelects() {
             const fillSelect = (id, items) => {
                 const el = document.getElementById(id);
-                if (!el) return;
+                if(!el) return;
                 const currentVal = el.value;
                 el.innerHTML = '';
                 items.forEach(item => {
                     const opt = document.createElement('option');
                     opt.value = item;
-                    opt.textContent = item;
+                    opt.textContent = item; 
                     el.appendChild(opt);
                 });
                 if (currentVal && items.includes(currentVal)) {
@@ -1254,13 +1228,13 @@
             const subject = document.getElementById('teacherSelectSubject').value;
             const content = document.getElementById('planHomeworkContent').value.trim();
 
-            const result = await callAPI('saveWeeklyPlan', {
+            const result = await postAction('savePlan', {
                 teacherId: currentLoggedInTeacher.id,
-                teacherName: currentLoggedInTeacher.name,
                 week, grade, classroom, subject, content
             });
 
-            if (result.result === 'success') {
+            if (result) {
+                await loadDataFromServer();
                 alert('تم حفظ الخطة الأسبوعية والواجب بنجاح!');
                 document.getElementById('planHomeworkContent').value = '';
             }
@@ -1270,9 +1244,8 @@
             const code = document.getElementById('studentSchoolCode').value.trim();
             if (!code) return alert('يرجى إدخال الرقم الوزاري للمدرسة');
 
-            await refreshDataFromServer();
-
-            if (appData.schoolInfo.code && code === appData.schoolInfo.code) {
+            await loadDataFromServer();
+            if (appData.schoolInfo.code && String(code) === String(appData.schoolInfo.code)) {
                 document.getElementById('studentFiltersArea').style.display = 'block';
                 populateTeacherSelects();
                 renderStudentSchedule();
@@ -1299,10 +1272,10 @@
             }
 
             appData.subjects.forEach(subjectName => {
-                const matchingPlan = appData.plans.find(p =>
-                    p.grade === grade &&
-                    p.classroom === classroom &&
-                    p.week === week &&
+                const matchingPlan = appData.plans.find(p => 
+                    p.grade === grade && 
+                    p.classroom === classroom && 
+                    p.week === week && 
                     p.subject === subjectName
                 );
 
@@ -1316,9 +1289,10 @@
                 const tdContent = document.createElement('td');
 
                 if (matchingPlan) {
-                    tdTeacher.textContent = matchingPlan.teacherName || '-';
+                    const teacher = appData.teachers.find(t => t.id === matchingPlan.teacherId);
+                    tdTeacher.textContent = teacher ? teacher.name : 'غير محدد';
                     tdContent.style.cssText = "white-space: pre-line; text-align: right;";
-                    tdContent.textContent = matchingPlan.content;
+                    tdContent.textContent = matchingPlan.content; 
                 } else {
                     tdTeacher.style.color = "var(--text-muted)";
                     tdTeacher.textContent = '-';
@@ -1335,7 +1309,7 @@
         }
 
         async function openMissingPlansModal() {
-            await refreshDataFromServer();
+            await loadDataFromServer();
             const tbody = document.getElementById('missingTeachersBody');
             tbody.innerHTML = '';
 
@@ -1380,8 +1354,7 @@
                 alert('مكتبة تصدير البيانات غير متوفرة حالياً');
                 return;
             }
-            await refreshDataFromServer();
-
+            await loadDataFromServer();
             const wb = XLSX.utils.book_new();
 
             const teachersData = appData.teachers.map(t => ({
@@ -1390,14 +1363,17 @@
             const wsTeachers = XLSX.utils.json_to_sheet(teachersData);
             XLSX.utils.book_append_sheet(wb, wsTeachers, "المعلمون");
 
-            const plansData = appData.plans.map(p => ({
-                "المعلم": p.teacherName || '',
-                "الأسبوع": p.week,
-                "الصف": p.grade,
-                "الفصل": p.classroom,
-                "المادة": p.subject,
-                "الخطة والواجب": p.content
-            }));
+            const plansData = appData.plans.map(p => {
+                const teacher = appData.teachers.find(t => t.id === p.teacherId);
+                return {
+                    "المعلم": teacher ? teacher.name : '',
+                    "الأسبوع": p.week,
+                    "الصف": p.grade,
+                    "الفصل": p.classroom,
+                    "المادة": p.subject,
+                    "الخطة والواجب": p.content
+                };
+            });
             const wsPlans = XLSX.utils.json_to_sheet(plansData);
             XLSX.utils.book_append_sheet(wb, wsPlans, "الخطط الأسبوعية");
 
