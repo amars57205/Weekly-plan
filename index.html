@@ -1,3 +1,4 @@
+HTML
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -848,10 +849,10 @@
                         <tr>
                             <th>#</th>
                             <th>اسم المعلم</th>
-                            <th>حالة الإدخال</th>
+                            <th>الحالة</th>
                         </tr>
                     </thead>
-                    <tbody id="missingTeachersBody">
+                    <tbody id="missingPlansTableBody">
                         <!-- Populated safely via JS -->
                     </tbody>
                 </table>
@@ -859,300 +860,71 @@
         </div>
     </div>
 
-    <div id="changeAdminPassModal" class="modal">
-        <div class="modal-content">
-            <button class="close-modal" onclick="closeModal('changeAdminPassModal')"><i class="fa-solid fa-xmark"></i></button>
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-key"></i> تغيير الرقم السري لصاحب الصلاحية</h3>
-            </div>
-            <form onsubmit="saveNewAdminPassword(event)">
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <input type="password" id="newAdminPassInput" class="form-control" placeholder="الرقم السري الجديد" required maxlength="50">
-                </div>
-                <button type="submit" class="btn-submit" style="width: 100%;"><i class="fa-solid fa-floppy-disk"></i> تحديث الرقم السري</button>
-            </form>
-        </div>
-    </div>
-
     <!-- Footer -->
     <footer>
-        <div>جميع الحقوق محفوظة &copy; 2026 - منصة الخطة الأسبوعية</div>
-        <div style="margin-top: 5px;">
-            اعداد وبرمجه <span class="dev-info">أ.صلاح الرحيمان 0530166681</span>
-        </div>
+        <p>جميع الحقوق محفوظة &copy; 2026 | <span class="dev-info">إعداد وبرمجة أ.صلاح الرحيمان</span></p>
     </footer>
 
-    <!-- Secure JavaScript Application Logic -->
+    <!-- JavaScript Application Logic -->
     <script>
-        // =====================================================================
-        // رابط تطبيق ويب Google Apps Script (Web App URL) المحدث
-        // =====================================================================
-        const API_URL = 'https://script.google.com/macros/s/AKfycbxAr__urn7bjMemQwCd0IBR9OK9hhd9ipeSF9kLw_mzgPCVMpxd4dsnFWfl7TgczjoNGQ/exec';
-
+        // State Management & LocalStorage
         let appData = {
-            adminPass: '1234',
-            visitsCount: 0,
-            schoolInfo: { name: '', code: '' },
-            weeks: ['الأسبوع الأول', 'الأسبوع الثاني'],
-            grades: ['الأول المتوسط', 'الثاني المتوسط'],
-            classrooms: ['1/1', '1/2'],
-            subjects: ['الرياضيات', 'العلوم', 'اللغة العربية', 'الإنجليزي'],
+            schoolName: "مدرسة عمار بن ياسر الابتدائية",
+            schoolCode: "123456",
+            adminPassword: "admin",
             teachers: [],
-            plans: []
+            weeks: ["الأسبوع الأول", "الأسبوع الثاني", "الأسبوع الثالث", "الأسبوع الرابع"],
+            grades: ["الصف الأول", "الصف الثاني", "الصف الثالث", "الصف الرابع", "الصف الخامس", "الصف السادس"],
+            classrooms: ["فصل 1", "فصل 2", "فصل 3"],
+            subjects: ["القرآن الكريم", "لغتي", "الرياضيات", "العلوم", "الدراسات الإسلامية", "التربية البدنية"],
+            plans: [] // { week, grade, classroom, subject, teacherName, content }
         };
 
-        let currentLoggedInTeacher = null;
-
-        // دالة حماية من ثغرات XSS (Cross-Site Scripting) لتعقيم كافة النصوص قبل العرض
-        function escapeHTML(str) {
-            if (typeof str !== 'string') return str;
-            return str.replace(/[&<>"']/g, function(match) {
-                const escapeMap = {
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#x27;'
-                };
-                return escapeMap[match];
-            });
-        }
-
-        let dataLoaded = false;
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            if (API_URL.includes('PASTE_YOUR_GOOGLE_APPS_SCRIPT')) {
-                alert('لم يتم ربط الصفحة بقاعدة بيانات Google Sheet بعد. يرجى وضع رابط الـ Web App داخل المتغير API_URL في الكود.');
-                updateUIState();
-                return;
+        // Load data on startup
+        window.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('ammarWeeklyPlanData');
+            if (saved) {
+                try {
+                    appData = JSON.parse(saved);
+                } catch (e) {
+                    console.error("Error loading data", e);
+                }
             }
-            await loadDataFromServer();
-            const result = await postAction('incrementVisit', {});
-            if (result && typeof result.visitsCount !== 'undefined') {
-                appData.visitsCount = result.visitsCount;
-                document.getElementById('visitCounter').textContent = appData.visitsCount;
-            }
+            
+            // Initialize visitor counter
+            let visits = parseInt(localStorage.getItem('ammarVisitCount') || '0', 10) + 1;
+            localStorage.setItem('ammarVisitCount', visits);
+            document.getElementById('visitCounter').textContent = visits;
+
+            updateSchoolHeader();
+            populateAdminForm();
+            renderTeachersTable();
         });
 
-        // يجلب كامل قاعدة البيانات (Google Sheet) ويحدّث الواجهة — يُستدعى بعد كل عملية
-        // حفظ حتى تبقى كل الجلسات (لكل مستخدم) متزامنة مع بعضها بدون تعارض
-        async function loadDataFromServer() {
-            try {
-                const res = await fetch(API_URL, { method: 'GET' });
-                const json = await res.json();
-                if (json && json.error) {
-                    alert('خطأ من الخادم: ' + json.error);
-                    return;
-                }
-                appData = json;
-                if (!appData.schoolInfo) appData.schoolInfo = { name: '', code: '' };
-                if (!Array.isArray(appData.weeks)) appData.weeks = [];
-                if (!Array.isArray(appData.grades)) appData.grades = [];
-                if (!Array.isArray(appData.classrooms)) appData.classrooms = [];
-                if (!Array.isArray(appData.subjects)) appData.subjects = [];
-                if (!Array.isArray(appData.teachers)) appData.teachers = [];
-                if (!Array.isArray(appData.plans)) appData.plans = [];
-                dataLoaded = true;
-                updateUIState();
-                document.getElementById('visitCounter').textContent = appData.visitsCount || 0;
-            } catch (err) {
-                console.error(err);
-                alert('تعذر الاتصال بقاعدة بيانات Google Sheet. تحقق من رابط الـ API ومن اتصال الإنترنت.');
-            }
+        function saveData() {
+            localStorage.setItem('ammarWeeklyPlanData', JSON.stringify(appData));
         }
 
-        // يرسل عملية إضافة/تعديل/حذف إلى Google Apps Script (والذي يقفل الجدول أثناء
-        // الكتابة عبر LockService حتى لا يتعارض مستخدمان يكتبان في نفس اللحظة)
-        async function postAction(action, payload) {
-            try {
-                const res = await fetch(API_URL + '?action=' + encodeURIComponent(action), {
-                    method: 'POST',
-                    // نستخدم text/plain لتفادي طلب preflight (OPTIONS) الذي لا يدعمه Apps Script افتراضياً
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload || {})
-                });
-                const json = await res.json();
-                if (json && json.error) {
-                    alert('حدث خطأ: ' + json.error);
-                    return null;
-                }
-                return json || { ok: true };
-            } catch (err) {
-                console.error(err);
-                alert('تعذر الاتصال بقاعدة بيانات Google Sheet. تحقق من رابط الـ API ومن اتصال الإنترنت.');
-                return null;
-            }
-        }
-
-        function updateUIState() {
-            if (appData.schoolInfo.name) {
-                document.getElementById('schoolHeaderTitle').textContent = `${appData.schoolInfo.name} - الرقم الوزاري: (${appData.schoolInfo.code})`;
-                document.getElementById('schoolNameInput').value = appData.schoolInfo.name;
-                document.getElementById('schoolCodeInput').value = appData.schoolInfo.code;
-            }
-            renderTeachersTable();
-            populateTeacherSelects();
-        }
-
+        // Navigation Helper
         function showSection(sectionId) {
             document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
-            const target = document.getElementById(sectionId);
-            if (target) {
-                target.classList.add('active');
-            }
-            if (sectionId === 'studentViewSection') {
-                populateTeacherSelects();
+            document.getElementById(sectionId).classList.add('active');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            if (sectionId === 'adminViewSection') {
+                populateAdminForm();
+                renderTeachersTable();
             }
         }
 
+        function updateSchoolHeader() {
+            document.getElementById('schoolHeaderTitle').textContent = appData.schoolName + (appData.schoolCode ? ` (الوزاري: ${appData.schoolCode})` : '');
+        }
+
+        // Modals Control
         function promptAdminLogin() {
             document.getElementById('adminPassInput').value = '';
             document.getElementById('adminAuthModal').classList.add('active');
-        }
-
-        async function verifyAdminPass(e) {
-            e.preventDefault();
-            await loadDataFromServer();
-            const inputPass = document.getElementById('adminPassInput').value.trim();
-            if (inputPass && String(inputPass) === String(appData.adminPass)) {
-                closeModal('adminAuthModal');
-                showSection('adminViewSection');
-            } else {
-                alert('الرقم السري غير صحيح!');
-            }
-        }
-
-        function changeAdminPasswordModal() {
-            document.getElementById('newAdminPassInput').value = '';
-            document.getElementById('changeAdminPassModal').classList.add('active');
-        }
-
-        async function saveNewAdminPassword(e) {
-            e.preventDefault();
-            const newPass = document.getElementById('newAdminPassInput').value.trim();
-            if (!newPass) return alert('يرجى كتابة رقم سري صحيح.');
-            const result = await postAction('changeAdminPass', { newPass });
-            if (result) {
-                appData.adminPass = newPass;
-                closeModal('changeAdminPassModal');
-                alert('تم تحديث الرقم السري للمسؤول بنجاح!');
-            }
-        }
-
-        function closeModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) modal.classList.remove('active');
-        }
-
-        async function saveSchoolInfo(e) {
-            e.preventDefault();
-            const name = document.getElementById('schoolNameInput').value.trim();
-            const code = document.getElementById('schoolCodeInput').value.trim();
-            const result = await postAction('saveSchoolInfo', { name, code });
-            if (result) {
-                await loadDataFromServer();
-                alert('تم حفظ بيانات المدرسة بنجاح!');
-            }
-        }
-
-        async function addQuickItem(type, inputId) {
-            const value = document.getElementById(inputId).value.trim();
-            if (!value) return alert('يرجى كتابة نص للإضافة');
-
-            if (appData[type] && appData[type].includes(value)) {
-                return alert('هذا العنصر مضاف مسبقاً!');
-            }
-            const result = await postAction('addQuickItem', { type, value });
-            if (result) {
-                document.getElementById(inputId).value = '';
-                await loadDataFromServer();
-                alert('تمت الإضافة بنجاح!');
-            }
-        }
-
-        async function registerTeacher(e) {
-            e.preventDefault();
-            const name = document.getElementById('teacherName').value.trim();
-            const password = document.getElementById('teacherPassword').value.trim();
-
-            const result = await postAction('registerTeacher', { name, password });
-            if (result) {
-                document.getElementById('addTeacherForm').reset();
-                await loadDataFromServer();
-                alert('تم تسجيل بيانات المعلم بنجاح!');
-            }
-        }
-
-        function renderTeachersTable() {
-            const tbody = document.getElementById('teachersTableBody');
-            tbody.innerHTML = '';
-            appData.teachers.forEach((t, index) => {
-                const tr = document.createElement('tr');
-
-                const tdIndex = document.createElement('td');
-                tdIndex.textContent = index + 1;
-
-                const tdName = document.createElement('td');
-                tdName.textContent = t.name; 
-
-                const tdPass = document.createElement('td');
-                tdPass.textContent = '••••••••'; 
-
-                const tdActions = document.createElement('td');
-                tdActions.style.cssText = "display: flex; justify-content: center; gap: 12px; align-items: center;";
-
-                const btnEdit = document.createElement('button');
-                btnEdit.style.cssText = "background:none; border:none; color:var(--primary-color); cursor:pointer; font-weight:600;";
-                btnEdit.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> تعديل';
-                btnEdit.onclick = () => openEditTeacherModal(t.id);
-
-                const btnDelete = document.createElement('button');
-                btnDelete.style.cssText = "background:none; border:none; color:var(--danger-color); cursor:pointer; font-weight:600;";
-                btnDelete.innerHTML = '<i class="fa-solid fa-trash"></i> حذف';
-                btnDelete.onclick = () => deleteTeacher(t.id);
-
-                tdActions.appendChild(btnEdit);
-                tdActions.appendChild(btnDelete);
-
-                tr.appendChild(tdIndex);
-                tr.appendChild(tdName);
-                tr.appendChild(tdPass);
-                tr.appendChild(tdActions);
-
-                tbody.appendChild(tr);
-            });
-        }
-
-        function openEditTeacherModal(id) {
-            const teacher = appData.teachers.find(t => t.id === id);
-            if (teacher) {
-                document.getElementById('editTeacherId').value = teacher.id;
-                document.getElementById('editTeacherName').value = teacher.name;
-                document.getElementById('editTeacherPassword').value = teacher.password;
-                document.getElementById('editTeacherModal').classList.add('active');
-            }
-        }
-
-        async function saveEditedTeacher(e) {
-            e.preventDefault();
-            const id = document.getElementById('editTeacherId').value;
-            const name = document.getElementById('editTeacherName').value.trim();
-            const password = document.getElementById('editTeacherPassword').value.trim();
-
-            const result = await postAction('editTeacher', { id, name, password });
-            if (result) {
-                closeModal('editTeacherModal');
-                await loadDataFromServer();
-                alert('تم تحديث بيانات المعلم بنجاح!');
-            }
-        }
-
-        async function deleteTeacher(id) {
-            if (!confirm('هل أنت تأكد من حذف المعلم؟')) return;
-            const result = await postAction('deleteTeacher', { id });
-            if (result) {
-                await loadDataFromServer();
-            }
         }
 
         function openTeacherLoginModal() {
@@ -1161,64 +933,187 @@
             document.getElementById('teacherAuthModal').classList.add('active');
         }
 
-        async function verifyTeacherLogin(e) {
-            e.preventDefault();
-            await loadDataFromServer();
-            const schoolCode = document.getElementById('teacherSchoolCode').value.trim();
-            const pass = document.getElementById('teacherLoginPass').value.trim();
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
 
-            if (!appData.schoolInfo.code) {
-                alert('لم يتم تسجيل الرقم الوزاري للمدرسة في لوحة التحكم بعد!');
-                return;
-            }
-
-            if (String(schoolCode) !== String(appData.schoolInfo.code)) {
-                alert('رقم المدرسة (الرقم الوزاري) غير صحيح!');
-                return;
-            }
-
-            const teacher = appData.teachers.find(t => String(t.password) === String(pass));
-            if (teacher) {
-                currentLoggedInTeacher = teacher;
-                document.getElementById('activeTeacherName').textContent = `المعلم: ${teacher.name}`;
-                closeModal('teacherAuthModal');
-                populateTeacherSelects();
-                showSection('teacherViewSection');
-            } else {
-                alert('الرقم السري للمعلم غير صحيح!');
+        function confirmExit() {
+            if (confirm("هل أنت متأكد من الانتقال إلى الشاشة الرئيسية؟")) {
+                showSection('rolesSection');
             }
         }
 
-        function populateTeacherSelects() {
-            const fillSelect = (id, items) => {
-                const el = document.getElementById(id);
-                if(!el) return;
-                const currentVal = el.value;
-                el.innerHTML = '';
-                items.forEach(item => {
-                    const opt = document.createElement('option');
-                    opt.value = item;
-                    opt.textContent = item; 
-                    el.appendChild(opt);
-                });
-                if (currentVal && items.includes(currentVal)) {
-                    el.value = currentVal;
-                }
-            };
+        // Admin Authentication & Actions
+        function verifyAdminPass(event) {
+            event.preventDefault();
+            const pass = document.getElementById('adminPassInput').value;
+            if (pass === (appData.adminPassword || 'admin')) {
+                closeModal('adminAuthModal');
+                showSection('adminViewSection');
+            } else {
+                alert("الرقم السري غير صحيح!");
+            }
+        }
 
+        function saveSchoolInfo(event) {
+            event.preventDefault();
+            appData.schoolName = document.getElementById('schoolNameInput').value.trim();
+            appData.schoolCode = document.getElementById('schoolCodeInput').value.trim();
+            saveData();
+            updateSchoolHeader();
+            alert("تم حفظ بيانات المدرسة بنجاح!");
+        }
+
+        function populateAdminForm() {
+            document.getElementById('schoolNameInput').value = appData.schoolName || '';
+            document.getElementById('schoolCodeInput').value = appData.schoolCode || '';
+        }
+
+        function addQuickItem(type, inputId) {
+            const val = document.getElementById(inputId).value.trim();
+            if (!val) {
+                alert("يرجى إدخال قيمة صحيحة");
+                return;
+            }
+            if (!appData[type].includes(val)) {
+                appData[type].push(val);
+                saveData();
+                document.getElementById(inputId).value = '';
+                alert("تمت الإضافة بنجاح!");
+            } else {
+                alert("هذا العنصر موجود مسبقاً!");
+            }
+        }
+
+        // Teachers Management
+        function registerTeacher(event) {
+            event.preventDefault();
+            const name = document.getElementById('teacherName').value.trim();
+            const pass = document.getElementById('teacherPassword').value.trim();
+
+            if (!name || !pass) return;
+
+            appData.teachers.push({ id: Date.now().toString(), name, pass });
+            saveData();
+            document.getElementById('addTeacherForm').reset();
+            renderTeachersTable();
+            alert("تم تسجيل المعلم بنجاح!");
+        }
+
+        function renderTeachersTable() {
+            const tbody = document.getElementById('teachersTableBody');
+            tbody.innerHTML = '';
+            if (appData.teachers.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="color: var(--text-muted);">لا يوجد معلمون مسجلون حالياً</td></tr>`;
+                return;
+            }
+
+            appData.teachers.forEach((t, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${t.name}</td>
+                    <td>••••••</td>
+                    <td>
+                        <button class="btn-action" style="padding: 5px 10px; font-size: 0.85rem;" onclick="openEditTeacher('${t.id}')">تعديل</button>
+                        <button class="btn-action btn-exit" style="padding: 5px 10px; font-size: 0.85rem;" onclick="deleteTeacher('${t.id}')">حذف</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openEditTeacher(id) {
+            const t = appData.teachers.find(item => item.id === id);
+            if (!t) return;
+            document.getElementById('editTeacherId').value = t.id;
+            document.getElementById('editTeacherName').value = t.name;
+            document.getElementById('editTeacherPassword').value = t.pass;
+            document.getElementById('editTeacherModal').classList.add('active');
+        }
+
+        function saveEditedTeacher(event) {
+            event.preventDefault();
+            const id = document.getElementById('editTeacherId').value;
+            const name = document.getElementById('editTeacherName').value.trim();
+            const pass = document.getElementById('editTeacherPassword').value.trim();
+
+            const t = appData.teachers.find(item => item.id === id);
+            if (t) {
+                t.name = name;
+                t.pass = pass;
+                saveData();
+                closeModal('editTeacherModal');
+                renderTeachersTable();
+                alert("تم تحديث بيانات المعلم بنجاح!");
+            }
+        }
+
+        function deleteTeacher(id) {
+            if (confirm("هل أنت متأكد من حذف هذا المعلم؟")) {
+                appData.teachers = appData.teachers.filter(t => t.id !== id);
+                saveData();
+                renderTeachersTable();
+            }
+        }
+
+        function changeAdminPasswordModal() {
+            const newPass = prompt("أدخل الرقم السري الجديد لصاحب الصلاحية:");
+            if (newPass !== null && newPass.trim() !== "") {
+                appData.adminPassword = newPass.trim();
+                saveData();
+                alert("تم تغيير الرقم السري بنجاح!");
+            }
+        }
+
+        // Teacher Portal Actions
+        let currentActiveTeacher = null;
+
+        function verifyTeacherLogin(event) {
+            event.preventDefault();
+            const code = document.getElementById('teacherSchoolCode').value.trim();
+            const pass = document.getElementById('teacherLoginPass').value.trim();
+
+            if (code !== appData.schoolCode) {
+                alert("رقم المدرسة الوزاري غير صحيح!");
+                return;
+            }
+
+            const teacher = appData.teachers.find(t => t.pass === pass);
+            if (!teacher) {
+                alert("الرقم السري للمعلم غير صحيح!");
+                return;
+            }
+
+            currentActiveTeacher = teacher;
+            closeModal('teacherAuthModal');
+            document.getElementById('activeTeacherName').textContent = `المعلم: ${teacher.name}`;
+            
+            populateTeacherSelects();
+            showSection('teacherViewSection');
+        }
+
+        function populateTeacherSelects() {
             fillSelect('teacherSelectWeek', appData.weeks);
             fillSelect('teacherSelectGrade', appData.grades);
             fillSelect('teacherSelectClassroom', appData.classrooms);
             fillSelect('teacherSelectSubject', appData.subjects);
-
-            fillSelect('studentSelectGrade', appData.grades);
-            fillSelect('studentSelectClassroom', appData.classrooms);
-            fillSelect('studentSelectWeek', appData.weeks);
         }
 
-        async function saveWeeklyPlan(e) {
-            e.preventDefault();
-            if (!currentLoggedInTeacher) return;
+        function fillSelect(elementId, items) {
+            const select = document.getElementById(elementId);
+            select.innerHTML = '';
+            items.forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item;
+                opt.textContent = item;
+                select.appendChild(opt);
+            });
+        }
+
+        function saveWeeklyPlan(event) {
+            event.preventDefault();
+            if (!currentActiveTeacher) return;
 
             const week = document.getElementById('teacherSelectWeek').value;
             const grade = document.getElementById('teacherSelectGrade').value;
@@ -1226,31 +1121,41 @@
             const subject = document.getElementById('teacherSelectSubject').value;
             const content = document.getElementById('planHomeworkContent').value.trim();
 
-            const result = await postAction('savePlan', {
-                teacherId: currentLoggedInTeacher.id,
-                week, grade, classroom, subject, content
-            });
+            // Check if plan already exists for this combination
+            const existingIndex = appData.plans.findIndex(p => 
+                p.week === week && p.grade === grade && p.classroom === classroom && p.subject === subject
+            );
 
-            if (result) {
-                await loadDataFromServer();
-                alert('تم حفظ الخطة الأسبوعية والواجب بنجاح!');
-                document.getElementById('planHomeworkContent').value = '';
+            const planObj = {
+                week, grade, classroom, subject,
+                teacherName: currentActiveTeacher.name,
+                content
+            };
+
+            if (existingIndex >= 0) {
+                appData.plans[existingIndex] = planObj;
+            } else {
+                appData.plans.push(planObj);
             }
+
+            saveData();
+            alert("تم حفظ الخطة الأسبوعية والواجب بنجاح!");
+            document.getElementById('planHomeworkContent').value = '';
         }
 
-        async function verifyStudentSchoolCode() {
+        // Student Portal Actions
+        function verifyStudentSchoolCode() {
             const code = document.getElementById('studentSchoolCode').value.trim();
-            if (!code) return alert('يرجى إدخال الرقم الوزاري للمدرسة');
-
-            await loadDataFromServer();
-            if (appData.schoolInfo.code && String(code) === String(appData.schoolInfo.code)) {
+            if (code === appData.schoolCode) {
                 document.getElementById('studentFiltersArea').style.display = 'block';
-                populateTeacherSelects();
+                fillSelect('studentSelectGrade', appData.grades);
+                fillSelect('studentSelectClassroom', appData.classrooms);
+                fillSelect('studentSelectWeek', appData.weeks);
                 renderStudentSchedule();
-            } else if (!appData.schoolInfo.code) {
-                alert('لم يتم تسجيل الرقم الوزاري في نظام المدرسة بعد!');
+                alert("تم التحقق بنجاح، يمكنك الآن اختيار المحددات لاستعراض الخطة.");
             } else {
-                alert('الرقم الوزاري للمدرسة غير صحيح!');
+                alert("رقم المدرسة الوزاري غير صحيح!");
+                document.getElementById('studentFiltersArea').style.display = 'none';
             }
         }
 
@@ -1259,130 +1164,78 @@
             const classroom = document.getElementById('studentSelectClassroom').value;
             const week = document.getElementById('studentSelectWeek').value;
 
-            document.getElementById('scheduleDisplayTitle').textContent = `جدول الخطة الأسبوعية`;
+            document.getElementById('scheduleDisplayTitle').textContent = `الخطة الأسبوعية - ${grade} (${classroom}) - ${week}`;
 
             const tbody = document.getElementById('studentScheduleBody');
             tbody.innerHTML = '';
 
-            if (!appData.subjects || appData.subjects.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted);">لا توجد مواد مضافة في النظام حتى الآن.</td></tr>';
+            // Filter subjects matched for this grade/classroom/week
+            const filteredPlans = appData.plans.filter(p => 
+                p.grade === grade && p.classroom === classroom && p.week === week
+            );
+
+            if (appData.subjects.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="color: var(--text-muted);">لا توجد مواد دراسية مضافة</td></tr>`;
                 return;
             }
 
-            appData.subjects.forEach(subjectName => {
-                const matchingPlan = appData.plans.find(p => 
-                    p.grade === grade && 
-                    p.classroom === classroom && 
-                    p.week === week && 
-                    p.subject === subjectName
-                );
-
+            appData.subjects.forEach(subj => {
+                const plan = filteredPlans.find(p => p.subject === subj);
                 const tr = document.createElement('tr');
-
-                const tdSubject = document.createElement('td');
-                tdSubject.style.fontWeight = "700";
-                tdSubject.textContent = subjectName;
-
-                const tdTeacher = document.createElement('td');
-                const tdContent = document.createElement('td');
-
-                if (matchingPlan) {
-                    const teacher = appData.teachers.find(t => t.id === matchingPlan.teacherId);
-                    tdTeacher.textContent = teacher ? teacher.name : 'غير محدد';
-                    tdContent.style.cssText = "white-space: pre-line; text-align: right;";
-                    tdContent.textContent = matchingPlan.content; 
-                } else {
-                    tdTeacher.style.color = "var(--text-muted)";
-                    tdTeacher.textContent = '-';
-                    tdContent.style.cssText = "color: var(--text-muted); font-style: italic;";
-                    tdContent.textContent = 'لم يتم إدخال الخطة بعد';
-                }
-
-                tr.appendChild(tdSubject);
-                tr.appendChild(tdTeacher);
-                tr.appendChild(tdContent);
-
+                tr.innerHTML = `
+                    <td style="font-weight: 700; background-color: #f7fafc;">${subj}</td>
+                    <td>${plan ? plan.teacherName : '<span class="badge-missing">لم يُحدد</span>'}</td>
+                    <td style="text-align: right; white-space: pre-wrap;">${plan ? plan.content : '<span style="color: var(--text-muted); font-style: italic;">لا توجد خطة مدخلة لهذا الأسبوع</span>'}</td>
+                `;
                 tbody.appendChild(tr);
             });
         }
 
-        async function openMissingPlansModal() {
-            await loadDataFromServer();
-            const tbody = document.getElementById('missingTeachersBody');
+        // Missing Plans & Excel Exports
+        function openMissingPlansModal() {
+            const tbody = document.getElementById('missingPlansTableBody');
             tbody.innerHTML = '';
 
             if (appData.teachers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3">لا يوجد معلمون مسجلون بعد.</td></tr>';
-            } else {
-                let missingCount = 0;
-                appData.teachers.forEach((teacher) => {
-                    const hasSubmitted = appData.plans.some(p => p.teacherId === teacher.id);
-                    if (!hasSubmitted) {
-                        missingCount++;
-                        const tr = document.createElement('tr');
-
-                        const tdIndex = document.createElement('td');
-                        tdIndex.textContent = missingCount;
-
-                        const tdName = document.createElement('td');
-                        tdName.style.fontWeight = "600";
-                        tdName.textContent = teacher.name;
-
-                        const tdBadge = document.createElement('td');
-                        tdBadge.innerHTML = '<span class="badge-missing">لم يضف الخطة</span>';
-
-                        tr.appendChild(tdIndex);
-                        tr.appendChild(tdName);
-                        tr.appendChild(tdBadge);
-
-                        tbody.appendChild(tr);
-                    }
-                });
-
-                if (missingCount === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--success-color); font-weight:700;">جميع المعلمين قاموا بإضافة الخطط بنجاح!</td></tr>';
-                }
+                tbody.innerHTML = `<tr><td colspan="3" style="color: var(--text-muted);">لا يوجد معلمون مسجلون</td></tr>`;
+                document.getElementById('missingPlansModal').classList.add('active');
+                return;
             }
+
+            // Simple demonstration of teachers check
+            appData.teachers.forEach((t, index) => {
+                const hasAdded = appData.plans.some(p => p.teacherName === t.name);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${t.name}</td>
+                    <td>${hasAdded ? '<span style="color: var(--success-color); font-weight: 700;">أضاف الخطة</span>' : '<span class="badge-missing">لم يُضف الخطة</span>'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
 
             document.getElementById('missingPlansModal').classList.add('active');
         }
 
-        async function exportDataToExcel() {
-            if (typeof XLSX === 'undefined') {
-                alert('مكتبة تصدير البيانات غير متوفرة حالياً');
+        function exportDataToExcel() {
+            if (appData.plans.length === 0) {
+                alert("لا توجد خطط أسبوعية مسجلة لتصديرها!");
                 return;
             }
-            await loadDataFromServer();
-            const wb = XLSX.utils.book_new();
 
-            const teachersData = appData.teachers.map(t => ({
-                "اسم المعلم": t.name
+            const exportData = appData.plans.map(p => ({
+                "الأسبوع": p.week,
+                "الصف الدراسي": p.grade,
+                "الفصل": p.classroom,
+                "المادة": p.subject,
+                "اسم المعلم": p.teacherName,
+                "الخطة والواجب": p.content
             }));
-            const wsTeachers = XLSX.utils.json_to_sheet(teachersData);
-            XLSX.utils.book_append_sheet(wb, wsTeachers, "المعلمون");
 
-            const plansData = appData.plans.map(p => {
-                const teacher = appData.teachers.find(t => t.id === p.teacherId);
-                return {
-                    "المعلم": teacher ? teacher.name : '',
-                    "الأسبوع": p.week,
-                    "الصف": p.grade,
-                    "الفصل": p.classroom,
-                    "المادة": p.subject,
-                    "الخطة والواجب": p.content
-                };
-            });
-            const wsPlans = XLSX.utils.json_to_sheet(plansData);
-            XLSX.utils.book_append_sheet(wb, wsPlans, "الخطط الأسبوعية");
-
-            XLSX.writeFile(wb, `الخطة_الاسبوعية_المدرسة.xlsx`);
-        }
-
-        function confirmExit() {
-            if (confirm('هل أنت تأكد من رغبتك في تسجيل الخروج وإغلاق الجلسة؟')) {
-                currentLoggedInTeacher = null;
-                showSection('rolesSection');
-            }
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "الخطط الأسبوعية");
+            XLSX.writeFile(workbook, "Weekly_Plans_Export.xlsx");
         }
     </script>
 </body>
